@@ -1,0 +1,116 @@
+name: adore
+
+x-common-env: &common-env
+  ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+  COLCON_WS_ROOT: ${CONTAINER_COLCON_WS_ROOT:-.colcon_workspace}
+  COLCON_COVERAGE_ARGS: "--cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_C_FLAGS=--coverage -DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+  FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+
+x-common-build-args: &common-build-args
+  USER_UID: ${USER_UID:-1000}
+  USER_GID: ${USER_GID:-1000}
+  USERNAME: ${USER_NAME:-user}
+
+services:
+  base:
+    image: adore_base:latest
+    build:
+      context: .
+      dockerfile: .docker/base/Dockerfile
+    profiles: [build]
+
+  dev:
+    image: adore_dev:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: .docker/dev/Dockerfile
+      args:
+        <<: *common-build-args
+    container_name: adore
+    stdin_open: true
+    tty: true
+    network_mode: host
+    environment:
+      <<: *common-env
+      DISPLAY: ${DISPLAY:-}
+      QT_X11_NO_MITSHM: "1"
+      HISTFILE: /home/${USER_NAME:-user}/.zsh_history
+      HISTSIZE: "100000"
+      SAVEHIST: "100000"
+    volumes:
+      - .:/home/${USER_NAME:-user}/adore
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./.zsh_history:/home/${USER_NAME:-user}/.zsh_history
+    working_dir: /home/${USER_NAME:-user}/adore
+
+  ci:
+    image: adore_ci:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: .docker/ci/Dockerfile
+      args:
+        <<: *common-build-args
+    container_name: adore_ci
+    environment:
+      <<: *common-env
+    volumes:
+      - .:/home/${USER_NAME:-user}/adore
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    working_dir: /home/${USER_NAME:-user}/adore
+    command: >
+      bash -lc "
+        set -euo pipefail &&
+        source /opt/ros/$${ROS_DISTRO}/setup.sh &&
+
+        rm -rf $${COLCON_WS_ROOT}/build $${COLCON_WS_ROOT}/install $${COLCON_WS_ROOT}/log &&
+
+        cd $${COLCON_WS_ROOT} &&
+        if [ -f install/local_setup.sh ]; then source install/local_setup.sh; fi &&
+        colcon build $${COLCON_COVERAGE_ARGS} &&
+
+        colcon test --packages-skip \$$(colcon list --base-paths src/vendor --names-only) &&
+        colcon test-result --all --verbose || true &&
+
+        cd $${WORKSPACE_ROOT} &&
+        mkdir -p documentation/mkdocs/docs &&
+        rm -rf documentation/mkdocs/docs/generated documentation/mkdocs/site &&
+        cp -r documentation/technical_reference_manual documentation/mkdocs/docs/technical_reference_manual &&
+        python3 documentation/mkdocs/gen_docs.py &&
+        cd documentation/mkdocs && mkdocs build &&
+        cd $${WORKSPACE_ROOT}/documentation &&
+        rm -rf docs && mkdir -p docs &&
+        cp -r mkdocs/site docs/mkdocs &&
+        cp -r mkdocs/img docs/mkdocs &&
+        cp -r mkdocs/stylesheets docs/mkdocs &&
+        cp -r mkdocs/overrides docs/mkdocs
+      "
+
+  docs:
+    image: adore_ci:latest
+    pull_policy: never
+    container_name: adore_docs
+    environment:
+      <<: *common-env
+    volumes:
+      - .:/home/${USER_NAME:-user}/adore
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    working_dir: /home/${USER_NAME:-user}/adore
+    command: >
+      bash -lc "
+        set -euo pipefail &&
+
+        rm -rf documentation/docs documentation/mkdocs/docs documentation/mkdocs/site documentation/technical_reference_manual/generated/ &&
+
+        mkdir -p documentation/mkdocs/docs &&
+        cp -r documentation/technical_reference_manual documentation/mkdocs/docs/technical_reference_manual &&
+        python3 documentation/mkdocs/gen_docs.py &&
+        cd documentation/mkdocs && mkdocs build &&
+        cd $${WORKSPACE_ROOT}/documentation &&
+        rm -rf docs && mkdir -p docs &&
+        cp -r mkdocs/site docs/mkdocs &&
+        cp -r mkdocs/img docs/mkdocs &&
+        cp -r mkdocs/stylesheets docs/mkdocs &&
+        cp -r mkdocs/overrides docs/mkdocs
+      "
