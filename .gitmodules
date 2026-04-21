@@ -117,3 +117,6 @@
 [submodule "ros2_workspace/src/vendor/osqp_build/osqp"]
 	path = ros2_workspace/src/vendor/osqp_build/osqp
 	url = https://github.com/osqp/osqp.git
+[submodule "ros2_workspace/src/adore_ros2_nodes/operational_design_domain"]
+	path = ros2_workspace/src/adore_ros2_nodes/operational_design_domain
+	url = git@github.com:DLR-TS/operational_design_domain.git
