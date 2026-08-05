@@ -1,0 +1,5 @@
+enabled_streams:
+  - client.ClientService.ClientStream
+
+client_streams:
+  - stream: client.ClientService.ClientStream
